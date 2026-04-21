@@ -1,0 +1,186 @@
+import numpy as np
+
+class GridWorldMDP:
+    def __init__(self, size, goal, trap):
+        self.size = size
+        self.goal = goal
+        self.trap = trap
+        self.state_space = [(i, j) for i in range(size) for j in range(size)]
+        self.action_space = ['UP', 'DOWN', 'LEFT', 'RIGHT']
+        self.transitions = self.build_transitions()
+        self.rewards = self.build_rewards()
+
+    def build_transitions(self):
+        transitions = {}
+        for state in self.state_space:
+            transitions[state] = {}
+            for action in self.action_space:
+                transitions[state][action] = self.calculate_transitions(state, action)
+        return transitions
+
+    def calculate_transitions(self, state, action):
+        i, j = state
+        if action == 'UP':
+            return self.validate_state(i - 1, j)
+        elif action == 'DOWN':
+            return self.validate_state(i + 1, j)
+        elif action == 'LEFT':
+            return self.validate_state(i, j - 1)
+        elif action == 'RIGHT':
+            return self.validate_state(i, j + 1)
+
+    def validate_state(self, i, j):
+        i = max(0, min(i, self.size - 1))
+        j = max(0, min(j, self.size - 1))
+
+        if (i, j) == self.goal or (i, j) == self.trap:
+            return [(1.0, (i, j))]  # terminal stays same
+        else:
+            return [(1.0, (i, j))]
+
+    def build_rewards(self):
+        rewards = {}
+        for state in self.state_space:
+            rewards[state] = -1.0
+        rewards[self.goal] = 0.0
+        rewards[self.trap] = -10.0
+        return rewards
+
+
+# ================= VALUE ITERATION =================
+def value_iteration(mdp, gamma=0.9, epsilon=0.01):
+    state_values = {state: 0.0 for state in mdp.state_space}
+
+    iteration = 0
+    while True:
+        print(f"\n===== VALUE ITERATION {iteration} =====")
+        delta = 0
+        new_state_values = state_values.copy()
+
+        for state in mdp.state_space:
+            if state == mdp.goal or state == mdp.trap:
+                continue
+
+            v = state_values[state]
+
+            new_state_values[state] = max(
+                sum(p * (mdp.rewards[next_state] + gamma * state_values[next_state])
+                    for p, next_state in mdp.transitions[state][action])
+                for action in mdp.action_space
+            )
+
+            delta = max(delta, abs(v - new_state_values[state]))
+
+        # 🔹 Print all states
+        for state in mdp.state_space:
+            print(f"State: {state}, Value: {round(new_state_values[state], 3)}")
+
+        state_values = new_state_values
+        iteration += 1
+
+        if delta < epsilon:
+            print("\nValue Iteration Converged!")
+            break
+
+    return state_values
+
+
+# ================= POLICY ITERATION =================
+def policy_iteration(mdp, gamma=0.9):
+    policy = {state: np.random.choice(mdp.action_space)
+              for state in mdp.state_space
+              if state != mdp.goal and state != mdp.trap}
+
+    state_values = {state: 0.0 for state in mdp.state_space}
+
+    iteration = 0
+
+    while True:
+        print(f"\n===== POLICY ITERATION {iteration} =====")
+
+        # -------- POLICY EVALUATION --------
+        eval_iter = 0
+        while True:
+            print(f"\n-- Policy Evaluation Iter {eval_iter} --")
+            delta = 0
+
+            for state in mdp.state_space:
+                if state == mdp.goal or state == mdp.trap:
+                    continue
+
+                v = state_values[state]
+                action = policy[state]
+
+                state_values[state] = sum(
+                    p * (mdp.rewards[next_state] + gamma * state_values[next_state])
+                    for p, next_state in mdp.transitions[state][action]
+                )
+
+                delta = max(delta, abs(v - state_values[state]))
+
+            # 🔹 Print values after each evaluation step
+            for state in mdp.state_space:
+                print(f"State: {state}, Value: {round(state_values[state], 3)}")
+
+            eval_iter += 1
+            if delta < 0.01:
+                print("Policy Evaluation Converged")
+                break
+
+        # -------- POLICY IMPROVEMENT --------
+        policy_stable = True
+
+        for state in mdp.state_space:
+            if state == mdp.goal or state == mdp.trap:
+                continue
+
+            old_action = policy[state]
+
+            best_action = max(
+                mdp.action_space,
+                key=lambda action: sum(
+                    p * (mdp.rewards[next_state] + gamma * state_values[next_state])
+                    for p, next_state in mdp.transitions[state][action]
+                )
+            )
+
+            policy[state] = best_action
+
+            if old_action != best_action:
+                policy_stable = False
+
+        # 🔹 Print updated policy
+        print("\nUpdated Policy:")
+        for state in policy:
+            print(f"State: {state}, Action: {policy[state]}")
+
+        iteration += 1
+
+        if policy_stable:
+            print("\nPolicy Iteration Converged!")
+            break
+
+    return policy, state_values
+
+
+# ================= MAIN =================
+if __name__ == "__main__":
+    size = 3
+    goal = (2, 2)
+    trap = (1, 1)
+
+    mdp = GridWorldMDP(size, goal, trap)
+
+    # VALUE ITERATION
+    vi_values = value_iteration(mdp)
+
+    print("\nFinal Value Iteration Results:")
+    for state, value in vi_values.items():
+        print(f"State: {state}, Value: {round(value, 3)}")
+
+    # POLICY ITERATION
+    policy, pi_values = policy_iteration(mdp)
+
+    print("\nFinal Policy Iteration Results:")
+    for state in policy:
+        print(f"State: {state}, Action: {policy[state]}, Value: {round(pi_values[state], 3)}")
